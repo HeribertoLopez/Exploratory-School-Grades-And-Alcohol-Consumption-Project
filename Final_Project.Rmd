@@ -1,0 +1,620 @@
+---
+title: "An exploration of Alchohol Consumption and Average Grades"
+author: "Heri & Jazmine"
+date: "2020/5/11"
+output: 
+  pdf_document:
+   fig_height: 4
+   fig_width: 6
+editor_options: 
+  chunk_output_type: console
+---
+```{r, include = FALSE}
+library(mosaic)
+library(ggplot2)
+library(utils)
+library(readr) 
+library(gridExtra)
+library(glmnet)
+library(htmlTable)
+library(magrittr)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+
+#Our two Datasets from Kaggle
+Student_por <- read_csv("~/Stats 272 S20/Project/HeriandJazmine/STAT-272-Project/DataSets/student_por.csv")
+Student_mat <- read_csv("~/Stats 272 S20/Project/HeriandJazmine/STAT-272-Project/DataSets/student_mat.csv")
+
+# Average of g1, g2, and g3 for every student, This wil serves as our response variable in our model 
+Student_mat <- Student_mat %>%
+  mutate(AvgGrade = (g1 + g2 + g3)/3,
+         sex_ind = ifelse(sex == "F", 1, 0)) 
+Student_por <- Student_por %>%
+  mutate(AvgGrade = (g1 + g2 + g3)/3, 
+         sex_ind = ifelse(sex == "F", 1, 0))  
+Student_mat<- Student_mat %>% 
+  mutate(medu = ifelse(medu == 0, NA, medu), 
+         fedu = ifelse(fedu == 0, NA, fedu)) %>%
+  filter(!is.na(medu)) %>% 
+  filter(!is.na(fedu))
+
+Student_por <- Student_por %>% 
+  mutate(medu = ifelse(medu == 0, NA, medu), 
+         fedu = ifelse(fedu == 0, NA, fedu)) %>%
+  filter(!is.na(medu)) %>% 
+  filter(!is.na(fedu))  
+
+Student_mat <- Student_mat %>% 
+  mutate(
+    absences = ifelse(absences > 4, "high", "low") 
+  )  
+Student_por <- Student_por %>% 
+  mutate(
+    absences = ifelse(absences > 2, "high", "low") 
+  )  
+
+
+Student_mat <- Student_mat %>% 
+  mutate(workalc = ifelse(dalc %in% c("1,", "2"), "low", "high"), 
+         wkndalc = ifelse(walc %in% c("1,", "2"), "low", "high"))
+
+Student_por <- Student_por %>% 
+  mutate(workalc = ifelse(dalc %in% c("1,", "2"), "low", "high"), 
+         wkndalc = ifelse(walc %in% c("1,", "2"), "low", "high"))  
+
+
+```
+
+# Introduction
+
+Colleges, Universities, and many schools across the world have implemented policies to tackle issues regarding alcohol use on their campuses. Many systems come with an effort to influence students to have control over their drinking habits and enjoy activities without feeling the need to feel inebriated. While schools seem to focus on the social aspects and harmful effects on individuals outside of academic life, researchers have developed a keen interest in the extent of the impact that alcohol has on the academic performance of students. The purpose of this study is to explore how alcohol consumption levels may influence the average final grade of students. 
+
+Research on the effects of alcohol consumption is widely studied. Large areas of studies have focused on the social factors that may lead to binge drinking as students. A study published in 2014, "Just a First-Year Thing? The Relations between Drinking During Orientation Week and Subsequent Academic Year Drinking Across Class Years", gathered undergraduate participants from the University of Otago, New Zealand,  and collected survey data on the student participants for 13 days through daily diaries which included personal amounts of alcohol consumption. The study focused mainly on patterns for event-specific drinking, such as Orientation week. (Riordan, Benjamin, et. all). The results suggested that event-specific drinking is associated with increases in the amount of alcohol consumption across all class years. Similarly, other studies have looked at predictors surrounding alcohol and the association with poor academic achievement through survey and educational data of students (Walid et al.). But to what extent does alcohol influence academic performance?  
+
+Of interest, when looking at the effects of alcohol, are potentially other factors that attributed to a change in academic performance. In the research article, "Legal access to alcohol and academic performance: Who is affected?" Austin and Joung use survey data to compare the average drinks students of legal age consume compared to those of younger generations. The results were similar to other studies where peers of legal drinking age showed a significant increase when obtained the legal drinking age compared to their younger peers.
+
+Based on previous research, we expect that a model for alcohol consumption and final average grades of students will account for variables that have previously associated with the grades. Researchers Joung Yeoub and Austin Smith's model alone accounted for complexity variables such as individual effects on performance and normal variants that can significantly affect the academic grades of a student. Despite complex predictors associated with grades, we expect to uncover significant factors between alcohol consumption levels and the average final grades of students.  
+
+# Methods
+
+Our two datasets were obtained from Kaggle and included data collected thorough surveys from secondary school Portuguese students taking a mathematics course and a language course at two different schools the Gabriel Pereira (GP) and Mousinho da Silveira (MS) schools in Portugal. Our original dataset included a total of 662 students from which 395 students were taking a mathematics course, and 649 were taking a Portuguese language course, with 382 taking both classes. There were no missing variables present, and the average grades for each student were calculated over three academic year semesters. The grading system in Portugal secondary schools are graded differently than in the United States grades and are calculated between a 0 through 20 point scale (A = 20 - 18, B = 17 - 16, C = 15 -14, D = 13-12, E (Sufficient) = 11-10).
+
+**Table 1.**
+```{r, include = FALSE} 
+
+table1 <- tribble( 
+  ~Variables, ~Definition, 
+  #---------|--------------------------
+  "AvgGrade",  "The average grade of the students in the study over three semesters/periods",
+  
+"Legal", "Students who meet the legal age of drinking in Portugal (ie. 18 years of age or older)",
+
+"Medu", "The Mother’s level of Education 0: none (1: primary education (4th grade), 
+2: 5th to 9th grade, 3: secondary education, 4: higher education)", 
+
+"Fedu", "The Father’s level of Education 0: none (1: primary education (4th grade), 2:
+5th to 9th grade, 3: secondary education, 4: higher education).", 
+
+"Sex", "The gender of the students in the study.", 
+
+"Absences", "The numeric count of total absences of a student", 
+
+"Dalc", "The amount of workday alcohol levels indicated, workday referring to the level of alcohol consumed during the week 0 to 5 (very low to very high).",
+
+"Walc", "The amount of Weekend alcohol indicated on the survey, 0 to 5 (very low to very high)",
+
+"School", "Student's school (binary: 'GP' - Gabriel Pereira or 'MS' - Mousinho da Silveira)", 
+
+"age", "Dtudent's age (numeric: from 15 to 22)", 
+
+"address", "Student's home address type (binary: 'U' - urban or 'R' - rural)", 
+"famsize", "Family size (binary: 'LE3' - less or equal to 3 or 'GT3' - greater than 3", 
+
+"Pstatus", "Parent's cohabitation status (binary: 'T' - living together or 'A' - apart)", 
+
+"Mjob", "other's job (nominal: 'teacher', 'health' care related, civil 'services' (e.g. administrative or police), 'at_home' or 'other')", 
+
+"Fjob", "Father's job (nominal: 'teacher', 'health' care related, civil 'services' (e.g. administrative or police), 'at_home' or 'other')", 
+
+"reason", "Reason to choose this school (nominal: close to 'home', school 'reputation', 'course' preference or 'other')", 
+
+"guardian",  "student's guardian (nominal: 'mother', 'father' or 'other')", 
+
+"traveltime", "home to school travel time (numeric: 1 - <15 min., 2 - 15 to 30 min., 3 - 30 min. to 1 hour, or 4 - >1 hour)",
+
+"studytime", "weekly study time (numeric: 1 - <2 hours, 2 - 2 to 5 hours, 3 - 5 to 10 hours, or 4 - >10 hours)", 
+
+"failures", "number of past class failures (numeric: n if 1<=n<3, else 4)",
+
+"schoolsup", "extra educational support (binary: yes or no)",
+
+"famsup", "family educational support (binary: yes or no)",
+
+"paid", "extra paid classes within the course subject (Math or Portuguese) (binary: yes or no)",
+
+"activities", "extra-curricular activities (binary: yes or no)",
+
+"nursery", "attended nursery school (binary: yes or no)",
+
+"higher","wants to take higher education (binary: yes or no)",
+
+"internet", "Internet access at home (binary: yes or no)",
+
+"romantic", "with a romantic relationship (binary: yes or no)",
+
+"famrel", "quality of family relationships (numeric: from 1 - very bad to 5 - excellent)",
+
+"freetime","free time after school (numeric: from 1 - very low to 5 - very high)",
+
+"goout", "going out with friends (numeric: from 1 - very low to 5 - very high)", 
+
+"health", "current health status (numeric: from 1 - very bad to 5 - very good)"
+)
+``` 
+```{r, include = FALSE} 
+table2 <- tribble( 
+  ~Predictors, ~Definition, 
+  #---------|--------------------------
+  "AvgGrade",  "The average grade of the students in the study over three semesters/periods",
+  
+"Medu", "The Mother’s level of Education 0: none (1: primary education (4th grade), 
+2: 5th to 9th grade, 3: secondary education, 4: higher education)", 
+
+"Fedu", "The Father’s level of Education 0: none (1: primary education (4th grade), 2:
+5th to 9th grade, 3: secondary education, 4: higher education).", 
+
+"Sex", "The gender of the students in the study.", 
+
+"Absences", "The numeric count of total absences of a student", 
+
+"Dalc", "The amount of workday alcohol levels indicated, workday referring to the level of alcohol consumed during the week 0 to 5 (very low to very high).",
+
+"Walc", "The amount of Weekend alcohol indicated on the survey, 0 to 5 (very low to very high)")
+```
+
+```{r, echo = TRUE, message = FALSE}
+kable(table2) %>% 
+  kable_styling(latex_options="scale_down")
+``` 
+
+Table 1 shows the variables that were present in our original dataset and used as predictors in our model. Our initial dataset included over 15 variables, some of which we were not able to explore, such as the difference in the schools fully, and others such as family quality and family educational support which we talk about further in our discussion. From the variables that we chose, previous research supported an association with the academic achievements of students, such as grades.  
+
+To begin our exploratory analysis, we developed several plots and summary statistics for our predictors alongside our response to the average final grade of students. For our quantitative variables, we conducted histograms and for qualitative and binary variables used boxplots. Studies consisted of calculating means, medians, and standard deviations for each predictor and developing plots with the average final grade. A few predictors lead us to change our dataset. Most notably, we noticed that when looking at the relationship for the highest level of education for both mother and Father, we noticed that students who had parents with no education level had a slightly higher median than parents in the other groups. Students with parents in the no education level had a smaller sample size than those in the other groups, which is why their effect seemed to be more significant. We decided to remove them from our analysis and focus on parents with at least some education. 
+
+**Figure 1.** 
+```{r, include=FALSE}
+
+
+plot101<- ggplot(data = Student_mat, mapping = aes(x = as.factor(medu))) + 
+  geom_bar(fill = "red") + 
+  labs(x = "Mother's level of education")
+
+plot102<- ggplot(data = Student_por, mapping = aes(x = as.factor(medu))) + 
+  geom_bar(fill = "blue") + 
+  labs(x = "Mother's level of education")
+grid1 <- grid.arrange(plot101, plot102, ncol = 2)
+```
+
+```{r, echo = TRUE}
+grid.arrange(plot101, plot102, ncol = 2) #Red is math course, Blue is Language course
+```
+
+After analyses of each predictor with the response, we decided to explore relationships between variables. We investigated associations by creating similar plots to those we used with our response variable except now plotting them with each other. Further analyses that were not in the development of exploring was investigating differences in age by separating the quantitative variable into a variable called legal, where we split age by at the legal age of drinking to see if there were any differences. Similar approaches to other variables were done but were not entirely completed. 
+
+Initial modelling was conducted using lasso and stepwise regression. Our process for modelling selection was based on the exploratory analyses with the intention to select the best model with the best possible combination of predictors for a student's average grade. Later on, we incorporated the cross validation method as well and decided to look at the affect of a model that is one standard deviation a way to adjust for model interpretability. Previous, analysis suggested that there was an interaction between alcohol consumption and sex.
+
+```{r, include = FALSE, echo = FALSE}
+ggplot(data = Student_mat, aes(y = AvgGrade, x = walc, color = sex)) + 
+  geom_point()+
+  geom_smooth(method = "lm")
+```
+
+# Results
+
+To help us understand our response variable better we conducted an overall summary statistic. The results demonstrated that in both courses there seemed to be a normal distribution with the distribution slightly skewed to the right for the students in the language course. Table 2 and Figure 2 show our results from the analysis. Overall, the mean scores in both courses seemed to round up to an average letter score of E (sufficient) according to the Portugal grading system. 
+
+```{r, include = FALSE}
+# Histograms of average grade 
+plot1a <- ggplot(data = Student_mat, mapping = aes(x = AvgGrade)) +
+  geom_histogram(bins = 20, fill = "Blue", color = "Black") + 
+  labs(x ="Average Grade")
+  
+# In Student_mat
+plot1b <- ggplot(data = Student_por, mapping = aes(x = AvgGrade)) +
+  geom_histogram(bins = 20, fill = "Red", color = "Black") + 
+  labs(x = "Average Grade") # In Student_por  
+```
+
+```{r,  echo = FALSE, include = FALSE}
+# Summary statistics
+avrgmath  <- favstats(~ AvgGrade, data = Student_mat) # Students in mathematics class
+avrglang <- favstats(~ AvgGrade, data = Student_por) # Students in language class 
+
+```
+
+**Figure 2.**  Histogram for the average score for studnets in the mathematics course (BLUE) and students in the language course (RED). 
+
+```{r, message = FALSE, echo = FALSE, results = 'hide'} 
+grid.arrange(plot1a,plot1b, nrow = 2) 
+```
+**Table 2.**Average grade Summary Statistis for both courses. 
+
+```{r}
+kable(avrgmath) %>% kable_styling(latex_options="scale_down")
+kable(avrglang) %>% kable_styling(latex_options="scale_down")
+```
+
+The lowest final average grade in both courses was a 1.33 score, with a high of 19.33 in the mathematics course and 18.67 in the language course. 
+
+Throughout our assesment of predictors with the response variable and through running initial linear reagression models with single predictors, we discovered that a lot of the predictors in our model were not significant by themselves. Furthermore. when looking at correlations between predictors alongside the final average grade, we noticed that there are many predictors that were not highly correlated to each other or the average final grade. Furthermore, boxplots referenced in the appendix showed only slight changes in the median, even after adding another predictor in such as sex made relatively slight changes. However, when we looked at the interaction between weekend alcohol cosumption and sex there seemed to be a significant as referenced later in our final model. 
+
+```{r, include = FALSE}
+Student_mat <- Student_mat %>% 
+  mutate(absences_ind = ifelse(absences == "high", 1, 0)) 
+Student_por<- Student_por %>% 
+  mutate(absences_ind = ifelse(absences == "high", 1, 0))
+
+#correlations
+cor_table <- Student_mat %>% 
+  dplyr::select(AvgGrade, sex_ind, dalc, walc,absences_ind, fedu, medu) %>% 
+  cor()
+
+cor_table2 <- Student_por %>% 
+  dplyr::select(AvgGrade, sex_ind, dalc, walc,absences_ind, fedu, medu) %>% 
+  cor()
+```
+
+**Figure 3.**
+
+```{r}
+kable(cor_table) %>% 
+    kable_styling(latex_options="scale_down")
+
+kable(cor_table2) %>% 
+  kable_styling(latex_options="scale_down")
+  
+```
+
+Although our predictors were not correlated completely to the average grade, the first method we used when selecting our model was the lasso method. This method provided the best model with five predictors, which consisted of the father's education, mother's education, weekend alcohol consumption, workday alcohol consumption, and the sex of students. Through lasso, we built a model named Model1 with the response variable and the5 predictors. The linear regression model was as follows:  $\hat{AvgGrade} = 8.9619 - 0.2568 dalc - 0.2078 walc + 0.2130 fedu + 0.5858 medu + 0.9007 sexM$. Model1 did not provide statistically significant evidence that these predictors could have effects on the average grade, aside from the mother's education (t = 2.758, p = 0.00609). Table 3 displays the predictors, coefficients, t-values, and p-values in Model1. 
+
+```{r, echo = FALSE, include = FALSE}
+table3 <- tribble( 
+   ~Predictor, ~Coefficients, ~tvalue, ~pvalue,
+   #---------|--------------|---------|---------------
+   "Intercept", 8.9619,14.289, "< 0.05",
+   "dalc", -0.2569,-0.957,0.33922,
+   "walc",-0.2078, -1.114, 0.26609,
+   "feud", 0.2130, 1.003, 0.31645,
+   "medu", 0.5858, 2.758, 0.00609,
+   "sexM", 0.9007, 2.372, 0.01819
+  )
+
+```
+
+**Table 3**
+
+```{r}
+table3
+```
+
+The other method we used when selecting a model was the stepwise method. The best model provided with the lowest AIC was named model 2, $AIC = 1011.92$. In Model2, there were three predictors, mother's education, weekend alcohol consumption, and the sex of students. Overall, the higher-level education of mothers is associated with higher average grades for students. The expected average grade increases 0.7096 (t = 4.280, p = 2.35*10^-5, CI = [0.384, 1.035]), on average, as a 1 level increase in mother's education after controlling the gender of students and the weekend alcohol consumption. The summary of the Model2 shows that the average grades decrease 0.3145 (t = -2.153, p = 0.0319, CI = [-0.602, -0.027), on average, as one more level in weekend alcohol consumption after controlling the mother's education level and adjusting the gender of students. Previous, exploratory analysis had shown the potential for an interaction between weekend alcohol consumptions and sex through boxplots. 
+
+**Figure 4.**
+```{r,echo= TRUE}
+
+ggplot(data = Student_mat, aes(y = AvgGrade, x = walc, color = sex)) + 
+  geom_point()+
+  geom_smooth(method = "lm")
+
+```
+
+Figure 4. demostrates that there is a possible interaction between sex and weekend alcohol consumption. Previous, boxplots had suggested this interaction and are included in the appendix. 
+Because the potential interaction exists between sex and weekend alcohol consumption shown by the scatterplot, we added an interaction term in Model2, and we called the
+model, Model3. Based on the summary of Model3, the results show that the higher-level education of mothers is associated with higher average grades for the student. We have the expected average grade increases 0.6846 (t = 4.171, p = 2*10^-6, CI = [6.658, 9.333]), on average, as a 1 level increase in mother's education after controlling the gender of students and the weekend alcohol consumption. Because there is an interaction between sex and weekend alcohol consumption, we need to interpret it in two parts. When the gender of students is female, the expected average grade increases by 0.2571(CI = [-0.202, 0.716]), on average, as 1 level increases in weekend alcohol consumption after controlling the level of mother's education. When the gender of students is male, the expected average grade decreases 0.6698 (CI = -1.517, 0.343]), on average, as 1 level increases in weekend alcohol consumption after controlling the level of mother's education. The interaction between sex and weekend alcohol consumption is statistically significant (t = -3.121, p = 0.001937), so the result that females students have higher average grades, on average, as more weekend alcohol consumption has is interesting. Also, this result is different from the results provided by Model2. Table 4 displays the predictors, coefficients, t-value, and p-value for our Model3. 
+
+```{r,  include = FALSE}
+table4 <- tribble( 
+  ~Predictor, ~Coefficients, ~t, ~p,
+    #---------|--------------|---------|---------------
+   "Intercept", 7.9955, 11.751, "< 0.05",
+   "medu", 0.6846, 4.171, "< 0.05",
+   "sexM", 2.9172, 3.836, 0.000146,
+   "walc", 0.2571 , 1.102, 0.2711,
+   "sexM:walc",0.2571, -3.121, 0.001937)
+```
+
+**Table 4**
+```{r, echo = TRUE}
+table4
+```
+
+In order to check whether the interaction term was an improvement, we used a nested F-test. We took Model2 as the reduced Model and Model3 as the full Model. The ANOVA table shows that the full Model with the interaction between sex and weekend alcohol consumption is an improvement (p = 0.002571) over the reduced Model, which is the model without the interaction term. So, there is statistically significant evidence that the interaction exists, and it is an improvement of the Model. 
+
+#Discussion 
+
+Our analysis suggests that weekend alcohol consumption is associated with the average final grade of students..However, the effect depends on the interaction between the weekend alcohol consumption and sex of the students. Furthermore, weekend alcohol consumption is not the only element that has an effect on the average grade of students. In our analysis, we have found that the mother's education level also had an association with the average final grade of students. The mother's education has a positive correlation with the average grade. On average, if the students are female, more weekend alcohol consumption is associated with higher average grades. However, for male students, more alcohol consumption is associated with lower average grades. 
+
+The results of our study suggest implications on the increase in average grade for students who consume alcohol and are females. However, we also note that the average grade does not only have a correlation with students who consume alcohol but also has a correlation with the levels of a students' mother's education. Our model indicates that weekend alcohol consumption is not a terrible choice for all of the students. We could not ask every student to stop the weekend alcohol consumption in order for a better grade. For example, in our model, female students have higher average grades with more alcohol consumption on the weekend. These implications should be taken lightly as there were several limitations to this study. 
+
+We can not neglect the limitation and problems in our research. First, we do not contain several predictors that have been associated in the past with effects on the average grade of students, such as workday alcohol consumption. Several other predictors that were also in our dataset did not make it in our final model due to lack of time and the complexity of the variables. In this case, we can not conclude that alcohol consumption has a positive or a negative effect on the average grade of students based on our dataset. Rather, there are some associations present. Another limitation is that our data was collected via a survey from students in secondary school. Our sample size was small for a high level of alcohol consumption. This may be a reasonable part of the reason why we do not have statistically significant for four predictors in Model2. Further research, should explore people who could extend the size of the population in the survey and contain workday alcohol consumption with a larger size of data. 
+
+# Appendix
+
+```{r}
+# Figure 1a
+favstats(~ AvgGrade, data = Student_mat) #  Student_mat
+favstats(~ AvgGrade, data = Student_por)
+#Student_por  
+649 - 395 
+
+ggplot(data = Student_mat, mapping = aes(x = AvgGrade, color = sex, fill = sex)) + 
+geom_bar() + 
+  facet_wrap(~sex, ncol = 2)
+
+ggplot(data = Student_mat, mapping = aes(x = sex, fill = sex)) + 
+  geom_bar() + 
+  labs(x = "sex of students in the mathematics course") 
+
+ggplot(data = Student_por, mapping = aes(x = sex, fill = sex)) + 
+  geom_bar() + 
+  labs(x = "sex of students in the language course")
+
+Student_mat %>% 
+  group_by(sex) %>% 
+  count()
+
+
+Student_por %>% 
+  group_by(sex) %>% 
+  count() 
+
+Student_mat %>% 
+  group_by(school, sex) %>% 
+  count()
+```
+
+```{r}
+Student_mat %>% 
+  group_by(medu, sex) %>% 
+  count(sex) 
+
+Student_por %>% 
+  group_by(medu, sex) %>% 
+  count() 
+
+ggplot(data = Student_mat, mapping = aes(x = as.factor(medu), fill = sex)) + 
+  geom_bar(position = "fill") 
+
+ggplot(data = Student_por, mapping = aes(x = as.factor(medu), fill = sex)) + 
+  geom_bar(position = "fill") 
+
+Student_mat<- Student_mat %>% 
+  mutate(medu = ifelse(medu == 0, NA, medu), 
+         fedu = ifelse(fedu == 0, NA, fedu)) %>%
+  filter(!is.na(medu)) %>% 
+  filter(!is.na(fedu)) 
+
+Student_por <- Student_por %>% 
+  mutate(medu = ifelse(medu == 0, NA, medu), 
+         fedu = ifelse(fedu == 0, NA, fedu)) %>%
+  filter(!is.na(medu)) %>% 
+  filter(!is.na(fedu)) 
+
+plot3a <- ggplot(data = Student_mat, mapping = aes(x = as.factor(medu), y = AvgGrade, )) +
+  geom_boxplot(fill = "Blue") + 
+  labs(x = "Mother's Education")# In Student_mat
+plot3b <- ggplot(data = Student_por, mapping = aes(x = as.factor(medu), y = AvgGrade)) +
+  geom_boxplot(fill = "Red") + 
+  labs(x = "Mother's Education")# In Student_por 
+plot3c <- ggplot(data = Student_mat, mapping = aes(x = as.factor(fedu), y = AvgGrade, )) +
+  geom_boxplot(fill = "Blue") + 
+  labs(x = "Father's Education")
+plot3d <- ggplot(data = Student_por, mapping = aes(x = as.factor(fedu), y = AvgGrade, )) +
+  geom_boxplot(fill = "red") + 
+  labs(x = " Father's Education")
+```
+
+```{r}
+grid.arrange(plot3a,plot3b, ncol = 2)
+# Summary statistics
+favstats(~ medu, data = Student_mat) # In Student_mat
+favstats(~ medu, data = Student_por) # In Student_por
+
+grid.arrange(plot3a,plot3b, plot3c, plot3d, ncol = 4)
+```
+
+```{r, include = FALSE, eval = FALSE}
+
+ggplot(data = Student_mat, mapping = aes(x = absences)) + 
+  geom_histogram() + 
+  facet_wrap(~sex, ncol = 2) 
+
+ggplot(data = Student_mat, mapping = aes(x = absences, y = AvgGrade, fill = absences)) + 
+  geom_boxplot() + 
+    facet_wrap(~sex, nrow = 2)
+
+ggplot(data = Student_por, mapping = aes(x = absences, y = AvgGrade, fill = absences)) + 
+  geom_boxplot() + 
+  facet_wrap(~sex, nrow = 2)
+```
+
+```{r}
+plot4c<- ggplot(data = Student_mat, mapping = aes(x = AvgGrade)) + 
+  geom_histogram() + 
+  facet_wrap(~sex, ncol = 2) + 
+  labs(x = "Mean Grade for students in Mathematics Course")
+
+plot4d<-ggplot(data = Student_por, mapping = aes(x = AvgGrade)) + 
+  geom_histogram() + 
+  facet_wrap(~sex, ncol = 2) + 
+  labs(x = "Mean Grade for students in Language Course") 
+
+grid.arrange(plot4c, plot4d, nrow = 2) 
+```
+
+```{r}
+Student_mat
+favstats(~age, data = Student_mat) 
+favstats(~age, data = Student_por) 
+
+Student_mat <- Student_mat %>% 
+  mutate(legal = ifelse(age >= 18, "legal", "underage"))  
+Student_por<- Student_por %>% 
+  mutate(legal = ifelse(age >= 18, "legal", "underage")) 
+
+Student_mat %>% 
+  count(legal)
+Student_por %>% 
+  count(legal)
+
+Student_mat %>% 
+  group_by(sex) %>% 
+  count(legal) 
+Student_por %>% 
+  group_by(sex) %>% 
+  count(legal) 
+
+plot5a<- ggplot(data = Student_mat, mapping = aes(x = legal, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~sex, ncol = 2)
+ 
+
+plot5b<- ggplot(data = Student_por, mapping = aes(x = legal, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~sex, ncol = 2)
+```
+
+```{r}
+ggplot(data = Student_mat, mapping = aes(x = as.factor(dalc), y = AvgGrade)) +
+  geom_boxplot()
+  facet_wrap(~sex, ncol = 2) 
+  
+ggplot(data = Student_por, mapping = aes(x = as.factor(dalc), y = AvgGrade)) +
+  geom_boxplot()
+  facet_wrap(~sex, ncol = 2)  
+    
+ggplot(data = Student_mat, mapping = aes(x = dalc)) + 
+  geom_bar() + 
+  facet_wrap(~sex, ncol = 2)  
+
+
+ggplot(data = Student_por, mapping = aes(x = dalc)) + 
+  geom_bar() + 
+  facet_wrap(~sex, ncol = 2)  
+
+Student_mat <- Student_mat %>% 
+  mutate(workalc = ifelse(dalc %in% c("1,", "2"), "low", "high"), 
+         wkndalc = ifelse(walc %in% c("1,", "2"), "low", "high"))
+
+Student_por <- Student_por %>% 
+  mutate(workalc = ifelse(dalc %in% c("1,", "2"), "low", "high"), 
+         wkndalc = ifelse(walc %in% c("1,", "2"), "low", "high")) 
+
+ggplot(data = Student_mat, mapping = aes(x = workalc, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~sex, ncol = 2) 
+
+ggplot(data = Student_mat, mapping = aes(x = wkndalc, y = AvgGrade)) + 
+  geom_boxplot() +
+  facet_wrap(~sex, ncol = 2)
+
+ggplot(data = Student_por, mapping = aes(x = workalc, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~sex, ncol = 2) 
+
+ggplot(data = Student_por, mapping = aes(x = wkndalc, y = AvgGrade)) + 
+  geom_boxplot() +
+  facet_wrap(~sex, ncol = 2)  
+
+################legal with wrk
+
+ggplot(data = Student_mat, mapping = aes(x = workalc, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~legal, ncol = 2) 
+
+ggplot(data = Student_mat, mapping = aes(x = wkndalc, y = AvgGrade)) + 
+  geom_boxplot() +
+  facet_wrap(~legal, ncol = 2)
+
+ggplot(data = Student_por, mapping = aes(x = workalc, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~legal, ncol = 2) 
+
+ggplot(data = Student_por, mapping = aes(x = wkndalc, y = AvgGrade)) + 
+  geom_boxplot() +
+  facet_wrap(~legal, ncol = 2) 
+
+##############Absences 
+
+ggplot(data = Student_mat, mapping = aes(x = workalc, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~absences, ncol = 2) 
+
+ggplot(data = Student_mat, mapping = aes(x = wkndalc, y = AvgGrade)) + 
+  geom_boxplot() +
+  facet_wrap(~absences, ncol = 2)
+
+ggplot(data = Student_por, mapping = aes(x = workalc, y = AvgGrade)) + 
+  geom_boxplot() + 
+  facet_wrap(~absences, ncol = 2) 
+
+ggplot(data = Student_por, mapping = aes(x = wkndalc, y = AvgGrade)) + 
+  geom_boxplot() +
+  facet_wrap(~absences, ncol = 2)  
+
+grid.arrange(plot5a, plot5b, ncol = 2)
+```
+
+```{r}
+X <- model.matrix(AvgGrade ~ dalc + walc + absences + fedu + medu + sex, data = Student_mat)[,-1]
+y <- as.numeric(Student_mat$AvgGrade)
+
+fit.lasso <- glmnet(X, y, alpha = 1)
+plot(fit.lasso, xvar = "lambda", label = TRUE)
+
+lasso_model <- glmnet(X, y, alpha = 1, lambda = 0.001)
+coef(lasso_model, s = 0.001)
+
+fit.lasso.cv <- cv.glmnet(X, y, alpha = 1, nfolds = 5)
+plot(fit.lasso.cv)
+
+fit.lasso.cv$lambda.min
+log(fit.lasso.cv$lambda.min)
+fit.lasso.cv$lambda.1se
+log(fit.lasso.cv$lambda.1se)
+
+coef(fit.lasso.cv, s = "lambda.min")
+coef(fit.lasso.cv, s = "lambda.1se")
+```
+
+```{r}
+Model1 <- lm(AvgGrade ~ dalc + walc + fedu + medu + sex, data = Student_mat)
+summary(Model1)
+```
+
+```{r}
+Model0 <- lm(AvgGrade ~ 1, data = Student_mat)
+summary(Model0)
+Model2_initial <- lm(AvgGrade ~ dalc + walc + absences + fedu + medu + sex, data = Student_mat)
+step(Model0, direction = "both", scope = formula(Model2_initial))
+```
+
+```{r}
+Model2 <- lm(AvgGrade ~ medu + sex + walc, data = Student_mat)
+summary(Model2)
+
+confint(Model2)
+```
+
+```{r}
+# Adding the interaction between gender and workday alcohol consumption 
+Model3 <- lm(AvgGrade ~ medu + sex + walc + sex:walc, data = Student_mat)
+summary(Model3)
+
+confint(Model3)
+```
+
+```{r}
+anova(Model2, Model3)
+```
