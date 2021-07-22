@@ -1,0 +1,124 @@
+---
+title: "Exploratory Analysis: Stage_II_and_III" 
+editor_options: 
+  chunk_output_type: console
+author: "Jazmine(Junzhi) Sun"
+date: "2020/4/21"
+output: pdf_document
+---
+
+```{r,include=FALSE}
+library(mosaic)
+library(readr)
+library(tidyverse)
+```
+
+```{r}
+# Import two datasets
+Student_mat <- read_csv("~/Stats 272 S20/Project/HeriandJazmine/STAT-272-Project/DataSets/student_mat.csv")
+print(Student_mat, width = Inf)
+Student_por <- read_csv("~/Stats 272 S20/Project/HeriandJazmine/STAT-272-Project/DataSets/student_por.csv")
+print(Student_por, width = Inf)
+
+# Average of g1, g2, and g3 for every student
+Student_mat <- Student_mat %>%
+  mutate(AvgGrade = (g1 + g2 + g3)/3)
+Student_por <- Student_por %>%
+  mutate(AvgGrade = (g1 + g2 + g3)/3)
+```
+
+Our response variable is the average grade of each student. We do not have missing variable in these two datasets. 
+
+```{r}
+# Histograms of average grade
+ggplot(data = Student_mat, mapping = aes(x = AvgGrade)) +
+  geom_histogram(bins = 20) # In Student_mat
+ggplot(data = Student_por, mapping = aes(x = AvgGrade)) +
+  geom_histogram(bins = 20) # In Student_por
+
+# Summary statistics
+favstats(~ AvgGrade, data = Student_mat) # In Student_mat
+favstats(~ AvgGrade, data = Student_por) # In Student_por
+```
+
+Our explanatory variable is alcohol consumption. In the datasets, there are two types of alcohol consumption. One is workday alcohol consumption and another one is weekend alcohol consumption. 
+
+```{r}
+# Histogram of "workday alcohol consumption"
+ggplot(data = Student_mat, mapping = aes(x = dalc)) +
+  geom_histogram(bins = 5) # In Student_mat
+ggplot(data = Student_por, mapping = aes(x = dalc)) +
+  geom_histogram(bins = 5) # In Student_por
+
+# Summary statistics
+favstats(~ dalc, data = Student_mat) # In Student_mat
+favstats(~ dalc, data = Student_por) # In Student_por
+
+
+# Histogram of "weekend alcohol consumption"
+ggplot(data = Student_mat, mapping = aes(x = walc)) +
+  geom_histogram(bins = 5) # In Student_mat
+ggplot(data = Student_por, mapping = aes(x = walc)) +
+  geom_histogram(bins = 5) # In Student_por
+
+# Summary statistics
+favstats(~ walc, data = Student_mat) # In Student_mat
+favstats(~ walc, data = Student_por) # In Student_por
+
+
+# Box plot of "workday alcohol consumption" and "weekend alcohol consumption" for each dataset
+ggplot(data = Student_mat, mapping = aes(x = as.factor(dalc), y = AvgGrade)) +
+  geom_boxplot()
+ggplot(data = Student_por, mapping = aes(x = as.factor(dalc), y = AvgGrade)) +
+  geom_boxplot()
+
+ggplot(data = Student_mat, mapping = aes(x = as.factor(walc), y = AvgGrade)) +
+  geom_boxplot()
+ggplot(data = Student_por, mapping = aes(x = as.factor(walc), y = AvgGrade)) +
+  geom_boxplot()
+```
+
+According to the box plot, we can notice that the average grades of students in math class alightly go down and then go up as the warkday alcohol consumption increase, and the average grades of students slightly decrease as the weekend alcohol consumption increase. TBC... 
+
+We have potential explanatory variables that are "mother's education" and "father's education". 
+
+```{r}
+# Histogram of "mother's education"
+ggplot(data = Student_mat, mapping = aes(x = medu)) +
+  geom_histogram(bins = 4) # In Student_mat
+ggplot(data = Student_por, mapping = aes(x = medu)) +
+  geom_histogram(bins = 4) # In Student_por
+
+# Box plot of "mother's education"
+ggplot(data = Student_mat, mapping = aes(x = as.factor(medu), y = AvgGrade)) +
+  geom_boxplot()
+ggplot(data = Student_por, mapping = aes(x = as.factor(medu), y = AvgGrade)) +
+  geom_boxplot()
+
+
+# Histogram of "mother's education"
+ggplot(data = Student_mat, mapping = aes(x = fedu)) +
+  geom_histogram(bins = 4) # In Student_mat
+ggplot(data = Student_por, mapping = aes(x = fedu)) +
+  geom_histogram(bins = 4) # In Student_por
+
+# Box plot of "mother's education"
+ggplot(data = Student_mat, mapping = aes(x = as.factor(medu), y = AvgGrade)) +
+  geom_boxplot()
+ggplot(data = Student_por, mapping = aes(x = as.factor(medu), y = AvgGrade)) +
+  geom_boxplot()
+ 
+``` 
+
+```{r}
+#Indicator variable for Sex 
+Student_mat <- Student_mat %>% 
+  mutate(sex = ifelse(sex == "F", 1,0)) %>% 
+  print(width = Inf) 
+#1 = Female, 0 = Male 
+
+ggplot(data = Student_mat, mapping = aes(x = AvgGrade)) + 
+  geom_ 
+
+cor(Student_mat$AvgGrade, Student_mat$dalc)
+```
